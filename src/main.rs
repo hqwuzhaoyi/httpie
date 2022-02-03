@@ -1,10 +1,15 @@
-
 use anyhow::{anyhow, Result};
 use clap::{AppSettings, Clap};
 use colored::*;
 use mime::Mime;
 use reqwest::{header, Client, Response, Url};
 use std::{collections::HashMap, str::FromStr};
+use syntect::{
+    easy::HighlightLines,
+    highlighting::{Style, ThemeSet},
+    parsing::SyntaxSet,
+    util::{as_24_bit_terminal_escaped, LinesWithEndings},
+};
 
 // 以下部分用于处理 CLI
 
@@ -105,6 +110,18 @@ async fn post(client: Client, args: &Post) -> Result<()> {
     Ok(print_resp(resp).await?)
 }
 
+fn print_syntect(s: &str, ext: &str) {
+    // Load these once at the start of your program
+    let ps = SyntaxSet::load_defaults_newlines();
+    let ts = ThemeSet::load_defaults();
+    let syntax = ps.find_syntax_by_extension(ext).unwrap();
+    let mut h = HighlightLines::new(syntax, &ts.themes["base16-ocean.dark"]);
+    for line in LinesWithEndings::from(s) {
+        let ranges: Vec<(Style, &str)> = h.highlight(line, &ps);
+        let escaped = as_24_bit_terminal_escaped(&ranges[..], true);
+        print!("{}", escaped);
+    }
+}
 
 // 打印服务器版本号 + 状态码
 fn print_status(resp: &Response) {
@@ -125,9 +142,11 @@ fn print_headers(resp: &Response) {
 fn print_body(m: Option<Mime>, body: &String) {
     match m {
         // 对于 "application/json" 我们 pretty print
-        Some(v) if v == mime::APPLICATION_JSON => {
-            println!("{}", jsonxf::pretty_print(body).unwrap().cyan())
-        }
+        // Some(v) if v == mime::APPLICATION_JSON => {
+        //     println!("{}", jsonxf::pretty_print(body).unwrap().cyan())
+        // }
+        Some(v) if v == mime::APPLICATION_JSON => print_syntect(body, "json"),
+        Some(v) if v == mime::TEXT_HTML => print_syntect(body, "html"),
         // 其它 mime type，我们就直接输出
         _ => println!("{}", body),
     }
